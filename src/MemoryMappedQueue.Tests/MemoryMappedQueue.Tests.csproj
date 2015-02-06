@@ -62,9 +62,10 @@
     </Otherwise>
   </Choose>
   <ItemGroup>
+    <Compile Include="AdvancedOperationTests.cs" />
     <Compile Include="InitializationTests.cs" />
     <Compile Include="MemoryMappedQueueTests.cs" />
-    <Compile Include="OperationTests.cs" />
+    <Compile Include="BasicOperationTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

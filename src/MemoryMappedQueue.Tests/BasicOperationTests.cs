@@ -3,8 +3,8 @@ using Xunit;
 
 namespace CodeConnect.MemoryMappedQueue.Tests
 {
-    [Collection("Operation tests")]
-    public class OperationTests : MemoryMappedQueueTests
+    [Collection("Basic operation tests")]
+    public class BasicOperationTests : MemoryMappedQueueTests
     {
         [Fact]
         public void SimpleDataTransfer()
@@ -25,13 +25,61 @@ namespace CodeConnect.MemoryMappedQueue.Tests
         }
 
         [Fact]
+        public void EmptyQueueGivesNull()
+        {
+            var initialSize = 50;
+            using (var writeQueue = new MemoryMappedQueue(initialSize, true, AccessName))
+            {
+
+                using (var readQueue = new MemoryMappedQueue(initialSize, false, AccessName))
+                {
+                    var receivedData = readQueue.Dequeue();
+
+                    Assert.Null(receivedData);
+                }
+            }
+        }
+
+        [Fact]
+        public void QueueAcceptsZeros()
+        {
+            var initialSize = 24;
+            using (var writeQueue = new MemoryMappedQueue(initialSize, true, AccessName))
+            {
+                using (var readQueue = new MemoryMappedQueue(initialSize, false, AccessName))
+                {
+                    // Note that each enqueue operation writes 8 bytes (4 for data and 4 for its length)
+                    byte[] testData = { 0 }; // 4 + 1
+                    writeQueue.Enqueue(testData); // 5 bytes filled
+
+                    var receivedData = readQueue.Dequeue();
+                    Assert.Equal(testData, receivedData);
+                }
+            }
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData(new byte[0])]
+        public void QueueRefusesNullArray(byte[] testData)
+        {
+            var initialSize = 24;
+            using (var writeQueue = new MemoryMappedQueue(initialSize, true, AccessName))
+            {
+                using (var readQueue = new MemoryMappedQueue(initialSize, false, AccessName))
+                {
+                    Assert.Throws(typeof(ArgumentNullException), () => writeQueue.Enqueue(testData));
+                }
+            }
+        }
+
+        [Fact]
         public void FillToBrinkSlowReceiver()
         {
             System.Diagnostics.Debug.WriteLine("FillToBrinkSlowReceiver");
             var initialSize = 24;
             using (var writeQueue = new MemoryMappedQueue(initialSize, true, AccessName))
             {
-
                 using (var readQueue = new MemoryMappedQueue(initialSize, false, AccessName))
                 {
                     // Note that each enqueue operation writes 8 bytes (4 for data and 4 for its length)
@@ -81,7 +129,6 @@ namespace CodeConnect.MemoryMappedQueue.Tests
             var initialSize = 24;
             using (var writeQueue = new MemoryMappedQueue(initialSize, true, AccessName))
             {
-
                 using (var readQueue = new MemoryMappedQueue(initialSize, false, AccessName))
                 {
                     // Note that each enqueue operation writes 8 bytes (4 for data and 4 for its length)
@@ -142,7 +189,6 @@ namespace CodeConnect.MemoryMappedQueue.Tests
             var initialSize = 24;
             using (var writeQueue = new MemoryMappedQueue(initialSize, true, AccessName))
             {
-
                 using (var readQueue = new MemoryMappedQueue(initialSize, false, AccessName))
                 {
                     byte[] testData = { 1, 2, 3, 4 }; // 4 + 4
@@ -164,7 +210,6 @@ namespace CodeConnect.MemoryMappedQueue.Tests
             var initialSize = 32;
             using (var writeQueue = new MemoryMappedQueue(initialSize, true, AccessName))
             {
-
                 using (var readQueue = new MemoryMappedQueue(initialSize, false, AccessName))
                 {
                     byte[] testData = { 1, 2, 3, 4, 5, 6, 7, 8 }; // 8 + 4
@@ -210,7 +255,6 @@ namespace CodeConnect.MemoryMappedQueue.Tests
             var initialSize = 30;
             using (var writeQueue = new MemoryMappedQueue(initialSize, true, AccessName))
             {
-
                 using (var readQueue = new MemoryMappedQueue(initialSize, false, AccessName))
                 {
                     byte[] testData = { 1, 2, 3, 4, 5, 6, 7, 8 }; // 8 + 4
@@ -246,10 +290,9 @@ namespace CodeConnect.MemoryMappedQueue.Tests
             var initialSize = 16;
             using (var writeQueue = new MemoryMappedQueue(initialSize, true, AccessName))
             {
-
                 using (var readQueue = new MemoryMappedQueue(initialSize, false, AccessName))
                 {
-                    byte[] testData = new byte[10]; // 10 + 4
+                    byte[] testData = new byte[5]; // 5 + 4
                     writeQueue.Enqueue(testData);
                     Assert.Throws(typeof(OutOfMemoryException), () => writeQueue.Enqueue(testData));
                 }
@@ -262,10 +305,9 @@ namespace CodeConnect.MemoryMappedQueue.Tests
             var initialSize = 16; // dataSize of 12 will hit the limit
             using (var writeQueue = new MemoryMappedQueue(initialSize, true, AccessName))
             {
-
                 using (var readQueue = new MemoryMappedQueue(initialSize, false, AccessName))
                 {
-                    byte[] testData = new byte[13]; // dataSize + 4
+                    byte[] testData = new byte[13]; // 13(dataSize) + 4
                     Assert.Throws(typeof(OutOfMemoryException), () => writeQueue.Enqueue(testData));
                 }
             }
