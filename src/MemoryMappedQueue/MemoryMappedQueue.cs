@@ -6,12 +6,16 @@ namespace CodeConnect.MemoryMappedQueue
 {
     public class MemoryMappedQueue : IDisposable
     {
-        private long _readPointer, _writePointer;
-        private byte[] _data;
+        // Main memory mapped file. Stores data
         private readonly MemoryMappedFile _dataFile;
-        private readonly MemoryMappedFile _pointersFile;
         private readonly int _dataSize;
+        private byte[] _data;
+
+        // Helper memory mapped file. Shares positions of read and write pointers
+        private readonly MemoryMappedFile _pointersFile;
         private readonly int _pointerSize;
+        private long _readPointer, _writePointer;
+
         private readonly bool _writer;
         private readonly Mutex _key;
         private const int MUTEX_TIMEOUT = 1000;
