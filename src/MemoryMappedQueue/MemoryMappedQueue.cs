@@ -14,7 +14,8 @@ namespace CodeConnect.MemoryMappedQueue
         // Helper memory mapped file. Shares positions of read and write pointers
         private readonly MemoryMappedFile _pointersFile;
         private readonly int _pointerSize;
-        private long _readPointer, _writePointer;
+        private long _readPointer, _writePointer, _overflowWritePointer;
+        private bool _usingOverflowWritePointer;
 
         private readonly bool _writer;
         private readonly Mutex _key;
@@ -28,6 +29,8 @@ namespace CodeConnect.MemoryMappedQueue
         {
             _readPointer = 0;
             _writePointer = 0;
+            _overflowWritePointer = 0;
+            _usingOverflowWritePointer = false;
             _writer = writer;
             _pointerSize = sizeof(long);
             _key = new Mutex(initiallyOwned: _writer, name: name);
@@ -52,7 +55,7 @@ namespace CodeConnect.MemoryMappedQueue
             if (writer)
             {
                 _dataFile = MemoryMappedFile.CreateNew(dataFileName, _dataSize, MemoryMappedFileAccess.ReadWrite);
-                _pointersFile = MemoryMappedFile.CreateNew(pointersFileName, 2 * _pointerSize, MemoryMappedFileAccess.ReadWrite);
+                _pointersFile = MemoryMappedFile.CreateNew(pointersFileName, 3 * _pointerSize, MemoryMappedFileAccess.ReadWrite);
             }
             else
             {
@@ -78,13 +81,8 @@ namespace CodeConnect.MemoryMappedQueue
             _key.WaitOne(MUTEX_TIMEOUT);
             try
             {
-                loadReadPointer();
-                bool overflowFlag;
-                var newWritePointer = advancePointer(_writePointer, grossDataLength, _readPointer, out overflowFlag);
-                if (overflowFlag)
-                {
-                    throw new OutOfMemoryException("The queue is too full to enque this data. ");
-                }
+                loadReadPointer(); // This may update the write location!
+                var writeLocation = getWriteLocation(grossDataLength);
 
                 using (MemoryMappedViewAccessor dataAccessor = _dataFile.CreateViewAccessor(_writePointer, grossDataLength))
                 {
@@ -92,7 +90,16 @@ namespace CodeConnect.MemoryMappedQueue
                     dataAccessor.Write<Int32>(0, ref dataLength);
                     dataAccessor.WriteArray<byte>(sizeof(Int32), serializedData, 0, dataLength);
                 }
-                _writePointer = newWritePointer;
+
+                // Update the pointers
+                if (_usingOverflowWritePointer)
+                {
+                    _overflowWritePointer = writeLocation + grossDataLength;
+                }
+                else
+                {
+                    _writePointer = writeLocation + grossDataLength;
+                }
                 storeWritePointer();
             }
             finally
@@ -100,6 +107,78 @@ namespace CodeConnect.MemoryMappedQueue
                 _key.ReleaseMutex();
             }
         }
+
+        private long getWriteLocation(int grossDataLength)
+        {
+            if (_usingOverflowWritePointer)
+            {
+                if (canUseSpace(_overflowWritePointer, _readPointer, grossDataLength))
+                {
+                    return _overflowWritePointer;
+                }
+                else
+                {
+                    // w::::R++++W- Data will overflow past the read pointer R
+                    string exceptionMessage = "There is not enough space for this data. ";
+#if DEBUG
+                    exceptionMessage += Diagnostics();
+#endif
+                    throw new OutOfMemoryException(exceptionMessage);
+                }
+            }
+            else
+            {
+                if (canUseSpace(_writePointer, _dataSize, grossDataLength))
+                {
+                    return _writePointer;
+                }
+                else
+                {
+                    // Reset the overflow pointer and attempt to use it
+                    _usingOverflowWritePointer = true;
+                    _overflowWritePointer = 0;
+                    return getWriteLocation(grossDataLength);
+                }
+            }
+        }
+
+        private bool canUseSpace(long startPosition, long endPosition, int dataLength)
+        {
+            return startPosition + dataLength < endPosition;
+        }
+
+        private long getReadLocation()
+        {
+            if (_readPointer == _writePointer)
+            {
+                // We've reached the write pointer.
+                // This mean either that there is an overflow:
+                if (_usingOverflowWritePointer)
+                {
+                    // ++++w----RW-
+                    return 0;
+                }
+                // Or that there is nothing to read
+                else
+                {
+                    // ------RW---
+                    return -1;
+                }
+            }
+            else if (_readPointer < _writePointer)
+            {
+                return _readPointer;
+            }
+            else
+            {
+                string exceptionMessage = "The data structure is in a corrupted state.";
+#if DEBUG
+                exceptionMessage += Diagnostics();
+#endif
+                throw new ApplicationException(exceptionMessage);
+            }
+        }
+
 
         /// <summary>
         /// Reads next available piece of data.
@@ -116,25 +195,29 @@ namespace CodeConnect.MemoryMappedQueue
             try
             {
                 Int32 dataLength;
+                // First piece of data (sizeof(Int32)) contains length of actual data chunk
                 using (MemoryMappedViewAccessor dataAccessor = _dataFile.CreateViewAccessor(_readPointer, sizeof(Int32), MemoryMappedFileAccess.Read))
                 {
                     dataLength = dataAccessor.ReadInt32(0);
                 }
                 byte[] data = new byte[dataLength];
-                bool overflowFlag;
                 Int32 grossDataLength = dataLength + sizeof(Int32);
-                long newReadPointer = advancePointer(_readPointer, grossDataLength, _writePointer, out overflowFlag);
-                if (overflowFlag)
-                {
-                    throw new InvalidOperationException("There is no more data in the queue");
-                }
 
+                // Update the write pointers, so that we know if there is an overflow
+                loadWritePointer();
+                var readLocation = getReadLocation();
+                if (readLocation == -1)
+                {
+                    // There is nothing to read
+                    return null;
+                }
+                
                 using (MemoryMappedViewAccessor dataAccessor = _dataFile.CreateViewAccessor(_readPointer, grossDataLength, MemoryMappedFileAccess.Read))
                 {
                     dataAccessor.ReadArray<byte>(sizeof(Int32), data, 0, dataLength);
                 }
 
-                _readPointer = newReadPointer;
+                _readPointer = readLocation + grossDataLength;
                 storeReadPointer();
 
                 return data;
@@ -143,40 +226,6 @@ namespace CodeConnect.MemoryMappedQueue
             {
                 _key.ReleaseMutex();
             }
-        }
-
-        /// <summary>
-        /// Advances the pointer and overflows it around the data structure's size
-        /// </summary>
-        /// <param name="pointer">Pointer to increment</param>
-        /// <param name="increment">Increment amount</param>
-        /// <returns></returns>
-        private long advancePointer(long pointer, int increment, long overflowCheck, out bool overflowFlag)
-        {
-            if (increment <= 0 || increment >= _dataSize)
-            {
-                throw new ArgumentOutOfRangeException(nameof(increment));
-            }
-
-            bool initialRelation = pointer >= overflowCheck;
-            bool finalRelation;
-
-            pointer += increment;
-            if (pointer > _dataSize)
-            {
-                pointer -= _dataSize;
-                // If despite overflow we are *again* ahead of other pointer, it means we're out of memory
-                finalRelation = pointer >= overflowCheck;
-                overflowFlag = initialRelation == finalRelation;
-            }
-            else
-            {
-                // There was no overflow. If we swapped spots with the other pointer, it means we're out of memory
-                finalRelation = pointer >= overflowCheck;
-                overflowFlag = initialRelation != finalRelation;
-            }
-
-            return pointer;
         }
 
         /// <summary>
@@ -189,9 +238,10 @@ namespace CodeConnect.MemoryMappedQueue
             {
                 throw new InvalidOperationException("This MemoryMappedQueue can only move the read pointer. Set writer=true in the constructor for enqueuing.");
             }
-            using (MemoryMappedViewAccessor pointerAccessor = _pointersFile.CreateViewAccessor(0, 2 * _pointerSize))
+            using (MemoryMappedViewAccessor pointerAccessor = _pointersFile.CreateViewAccessor(0, 3 * _pointerSize))
             {
-                pointerAccessor.Write(0, _writePointer);
+                pointerAccessor.Write(_pointerSize, _writePointer);
+                pointerAccessor.Write(_pointerSize * 2, _overflowWritePointer);
             }
         }
 
@@ -205,9 +255,9 @@ namespace CodeConnect.MemoryMappedQueue
             {
                 throw new InvalidOperationException("This MemoryMappedQueue can only move the write pointer. Set writer=false in the constructor for dequeuing.");
             }
-            using (MemoryMappedViewAccessor pointerAccessor = _pointersFile.CreateViewAccessor(0, 2 * _pointerSize))
+            using (MemoryMappedViewAccessor pointerAccessor = _pointersFile.CreateViewAccessor(0, 3 * _pointerSize))
             {
-                pointerAccessor.Write(_pointerSize, _readPointer);
+                pointerAccessor.Write(0, _readPointer);
             }
         }
 
@@ -221,11 +271,14 @@ namespace CodeConnect.MemoryMappedQueue
             {
                 throw new InvalidOperationException("Writing MemoryMappedQueue must not read its property (write pointer) from the memory mapped file.");
             }
-            using (MemoryMappedViewAccessor pointerAccessor = _pointersFile.CreateViewAccessor(0, 2 * _pointerSize))
+            using (MemoryMappedViewAccessor pointerAccessor = _pointersFile.CreateViewAccessor(0, 3 * _pointerSize))
             {
-                long newWritePointer;
-                pointerAccessor.Read<long>(0, out newWritePointer);
+                long newWritePointer, newOverflowWritePointer;
+                pointerAccessor.Read<long>(_pointerSize, out newWritePointer);
+                pointerAccessor.Read<long>(_pointerSize * 2, out newOverflowWritePointer);
                 _writePointer = newWritePointer;
+                _overflowWritePointer = newWritePointer;
+                _usingOverflowWritePointer = _overflowWritePointer > -1;
             }
         }
 
@@ -239,10 +292,21 @@ namespace CodeConnect.MemoryMappedQueue
             {
                 throw new InvalidOperationException("Reading MemoryMappedQueue must not read its property (read pointer) from the memory mapped file.");
             }
-            using (MemoryMappedViewAccessor pointerAccessor = _pointersFile.CreateViewAccessor(0, 2 * _pointerSize))
+            using (MemoryMappedViewAccessor pointerAccessor = _pointersFile.CreateViewAccessor(0, 3 * _pointerSize))
             {
                 long newReadPointer;
-                pointerAccessor.Read<long>(_pointerSize, out newReadPointer);
+                pointerAccessor.Read<long>(0, out newReadPointer);
+
+                // If the new read pointer is less than the current read pointer,
+                // it means that the reader read everything from standard buffer
+                // and is now reading from the overflow buffer
+                if (newReadPointer < _readPointer)
+                {
+                    _writePointer = _overflowWritePointer;
+                    _usingOverflowWritePointer = false;
+                    _overflowWritePointer = -1;
+                }
+
                 _readPointer = newReadPointer;
             }
         }
@@ -284,16 +348,28 @@ namespace CodeConnect.MemoryMappedQueue
         }
 #endregion
 
-        internal string Diagnostics()
+        public string Diagnostics()
         {
             int diagnosticSize = 50;
             int numberOfCharacters = 2;
             char[] diagnostic = new char[diagnosticSize];
+
+            double overflowData = 0;
+            if (_usingOverflowWritePointer)
+            {
+                overflowData = Math.Round(_overflowWritePointer / (double)_dataSize * (diagnosticSize - numberOfCharacters));
+            }
             var initialEmpty = Math.Round(_readPointer / (double)_dataSize * (diagnosticSize - numberOfCharacters));
             var data = Math.Round((_writePointer - _readPointer) / (double)_dataSize * (diagnosticSize - numberOfCharacters));
             var finalEmpty = Math.Round((_dataSize - _writePointer) / (double)_dataSize * (diagnosticSize - numberOfCharacters));
 
             int charactersDrawn = 0;
+
+            for (int i = charactersDrawn; i < overflowData; i++)
+            {
+                diagnostic[charactersDrawn] = '+'; // Overflow data
+            }
+            diagnostic[charactersDrawn++] = 'w'; // Overflow write pointer
             for (int i = 0; i < initialEmpty; i++, charactersDrawn++)
             {
                 diagnostic[charactersDrawn] = '-'; // Unused space

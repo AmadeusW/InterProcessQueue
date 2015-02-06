@@ -77,6 +77,7 @@ namespace CodeConnect.MemoryMappedQueue.Tests
         [Fact]
         public void MultipleDataTransfersWithOverflow()
         {
+            System.Diagnostics.Debug.WriteLine("MultipleDataTransfersWithOverflow");
             var initialSize = 32;
             using (var writeQueue = new MemoryMappedQueue(initialSize, true, AccessName))
             {
@@ -88,30 +89,32 @@ namespace CodeConnect.MemoryMappedQueue.Tests
                     var receivedData = readQueue.Dequeue();
                     Assert.Equal(testData, receivedData);
 
+                    System.Diagnostics.Debug.WriteLine(writeQueue.Diagnostics());
+                    System.Diagnostics.Debug.WriteLine(readQueue.Diagnostics());
+
                     byte[] testData2 = { 9, 10, 11, 12, 13, 14, 15, 16 }; // 8 + 4
-                    var test = writeQueue.Diagnostics();
-                    var rtest = readQueue.Diagnostics();
                     writeQueue.Enqueue(testData2); // 24 B filled
-                    var test2 = writeQueue.Diagnostics();
-                    var rtest2 = readQueue.Diagnostics();
                     var receivedData2 = readQueue.Dequeue();
-                    var test3 = writeQueue.Diagnostics();
-                    var rtest3 = readQueue.Diagnostics();
                     Assert.Equal(testData2, receivedData2);
+
+                    System.Diagnostics.Debug.WriteLine(writeQueue.Diagnostics());
+                    System.Diagnostics.Debug.WriteLine(readQueue.Diagnostics());
 
                     byte[] testData3 = { 17, 18, 19, 20 }; // 4 + 4
                     writeQueue.Enqueue(testData3); // 32 B filled
-                    var test4 = writeQueue.Diagnostics();
-                    var rtest4 = readQueue.Diagnostics();
                     var receivedData3 = readQueue.Dequeue();
-                    var test5 = writeQueue.Diagnostics();
-                    var rtest5 = readQueue.Diagnostics();
                     Assert.Equal(testData3, receivedData3);
+
+                    System.Diagnostics.Debug.WriteLine(writeQueue.Diagnostics());
+                    System.Diagnostics.Debug.WriteLine(readQueue.Diagnostics());
 
                     byte[] testData4 = { 21, 22, 23, 24 }; // 4 + 4
                     writeQueue.Enqueue(testData4); // 40 B filled
                     var receivedData4 = readQueue.Dequeue();
                     Assert.Equal(testData4, receivedData4);
+
+                    System.Diagnostics.Debug.WriteLine(writeQueue.Diagnostics());
+                    System.Diagnostics.Debug.WriteLine(readQueue.Diagnostics());
                 }
             }
         }
@@ -119,6 +122,8 @@ namespace CodeConnect.MemoryMappedQueue.Tests
         [Fact]
         public void MultipleDataTransfersWithTrickyOverflow()
         {
+            System.Diagnostics.Debug.WriteLine("MultipleDataTransfersWithTrickyOverflow");
+
             var initialSize = 30;
             using (var writeQueue = new MemoryMappedQueue(initialSize, true, AccessName))
             {
@@ -130,15 +135,24 @@ namespace CodeConnect.MemoryMappedQueue.Tests
                     var receivedData = readQueue.Dequeue();
                     Assert.Equal(testData, receivedData);
 
+                    System.Diagnostics.Debug.WriteLine(writeQueue.Diagnostics());
+                    System.Diagnostics.Debug.WriteLine(readQueue.Diagnostics());
+
                     byte[] testData2 = { 9, 10, 11, 12, 13, 14, 15, 16 }; // 8 + 4
                     writeQueue.Enqueue(testData2); // 24 B filled
                     var receivedData2 = readQueue.Dequeue();
                     Assert.Equal(testData2, receivedData2);
 
+                    System.Diagnostics.Debug.WriteLine(writeQueue.Diagnostics());
+                    System.Diagnostics.Debug.WriteLine(readQueue.Diagnostics());
+
                     byte[] testData3 = { 17, 18, 19, 20, 21, 22 }; // 6 + 4
                     writeQueue.Enqueue(testData3); // 34 B filled
                     var receivedData3 = readQueue.Dequeue();
                     Assert.Equal(testData3, receivedData3);
+
+                    System.Diagnostics.Debug.WriteLine(writeQueue.Diagnostics());
+                    System.Diagnostics.Debug.WriteLine(readQueue.Diagnostics());
                 }
             }
         }
@@ -169,7 +183,7 @@ namespace CodeConnect.MemoryMappedQueue.Tests
                 using (var readQueue = new MemoryMappedQueue(initialSize, false, AccessName))
                 {
                     byte[] testData = new byte[13]; // dataSize + 4
-                    Assert.Throws(typeof(ArgumentOutOfRangeException), () => writeQueue.Enqueue(testData));
+                    Assert.Throws(typeof(OutOfMemoryException), () => writeQueue.Enqueue(testData));
                 }
             }
         }
