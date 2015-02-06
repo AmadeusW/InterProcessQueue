@@ -28,9 +28,6 @@ namespace CodeConnect.MemoryMappedQueue
             _pointerSize = sizeof(long);
             _key = new Mutex(initiallyOwned: _writer, name: name);
 
-            string dataFileName = name + "_data";
-            string pointersFileName = name + "_pointers";
-
             // Ensure specified size is within bounds (2GB)
             if (size >= int.MaxValue)
             {
@@ -44,6 +41,8 @@ namespace CodeConnect.MemoryMappedQueue
 
             _dataSize = size;
             _data = new byte[_dataSize];
+            string dataFileName = name + "_data";
+            string pointersFileName = name + "_pointers";
 
             // Access the memory mapped file
             if (writer)
@@ -54,7 +53,7 @@ namespace CodeConnect.MemoryMappedQueue
             else
             {
                 _dataFile = MemoryMappedFile.OpenExisting(dataFileName, MemoryMappedFileRights.Read);
-                _pointersFile = MemoryMappedFile.OpenExisting(pointersFileName, MemoryMappedFileRights.Read);
+                _pointersFile = MemoryMappedFile.OpenExisting(pointersFileName, MemoryMappedFileRights.ReadWrite);
             }
         }
 
@@ -70,27 +69,27 @@ namespace CodeConnect.MemoryMappedQueue
                 throw new InvalidOperationException("This MemoryMappedQueue can only dequeue. Set writer=true in the constructor for enqueuing.");
             }
             Int32 dataLength = serializedData.Length;
-            var newWritePointer = advancePointer(_writePointer, dataLength);
+            Int32 grossDataLength = dataLength + sizeof(Int32);
 
             _key.WaitOne(MUTEX_TIMEOUT);
             try
             {
-
-                getReadPointer();
-                if (newWritePointer > _readPointer)
+                loadReadPointer();
+                bool overflowFlag;
+                var newWritePointer = advancePointer(_writePointer, grossDataLength, _readPointer, out overflowFlag);
+                if (overflowFlag)
                 {
                     throw new OutOfMemoryException("The queue is too full to enque this data. ");
                 }
 
-                using (MemoryMappedViewAccessor dataAccessor = _dataFile.CreateViewAccessor(_writePointer, sizeof(Int32) + dataLength))
+                using (MemoryMappedViewAccessor dataAccessor = _dataFile.CreateViewAccessor(_writePointer, grossDataLength))
                 {
                     // Writes [ dataLength | data ................................ ]
                     dataAccessor.Write<Int32>(0, ref dataLength);
-                    dataAccessor.WriteArray<byte>(sizeof(int), serializedData, 0, dataLength);
+                    dataAccessor.WriteArray<byte>(sizeof(Int32), serializedData, 0, dataLength);
                 }
                 _writePointer = newWritePointer;
-                updateWritePointer();
-
+                storeWritePointer();
             }
             finally
             {
@@ -113,18 +112,26 @@ namespace CodeConnect.MemoryMappedQueue
             try
             {
                 Int32 dataLength;
-                using (MemoryMappedViewAccessor dataAccessor = _dataFile.CreateViewAccessor(_readPointer, sizeof(Int32)))
+                using (MemoryMappedViewAccessor dataAccessor = _dataFile.CreateViewAccessor(_readPointer, sizeof(Int32), MemoryMappedFileAccess.Read))
                 {
                     dataLength = dataAccessor.ReadInt32(0);
                 }
                 byte[] data = new byte[dataLength];
-                using (MemoryMappedViewAccessor dataAccessor = _dataFile.CreateViewAccessor(_readPointer + sizeof(Int32), dataLength))
+                bool overflowFlag;
+                Int32 grossDataLength = dataLength + sizeof(Int32);
+                long newReadPointer = advancePointer(_readPointer, grossDataLength, _writePointer, out overflowFlag);
+                if (overflowFlag)
                 {
-                    dataAccessor.ReadArray<byte>(0, data, sizeof(Int32), dataLength);
+                    throw new InvalidOperationException("There is no more data in the queue");
                 }
 
-                _readPointer = advancePointer(_readPointer, sizeof(Int32) + dataLength);
-                updateReadPointer();
+                using (MemoryMappedViewAccessor dataAccessor = _dataFile.CreateViewAccessor(_readPointer, grossDataLength, MemoryMappedFileAccess.Read))
+                {
+                    dataAccessor.ReadArray<byte>(sizeof(Int32), data, 0, dataLength);
+                }
+
+                _readPointer = newReadPointer;
+                storeReadPointer();
 
                 return data;
             }
@@ -140,18 +147,31 @@ namespace CodeConnect.MemoryMappedQueue
         /// <param name="pointer">Pointer to increment</param>
         /// <param name="increment">Increment amount</param>
         /// <returns></returns>
-        private long advancePointer(long pointer, int increment)
+        private long advancePointer(long pointer, int increment, long overflowCheck, out bool overflowFlag)
         {
             if (increment <= 0 || increment >= _dataSize)
             {
                 throw new ArgumentOutOfRangeException(nameof(increment));
             }
 
+            bool initialRelation = pointer >= overflowCheck;
+            bool finalRelation;
+
             pointer += increment;
             if (pointer > _dataSize)
             {
                 pointer -= _dataSize;
+                // If despite overflow we are *again* ahead of other pointer, it means we're out of memory
+                finalRelation = pointer >= overflowCheck;
+                overflowFlag = initialRelation == finalRelation;
             }
+            else
+            {
+                // There was no overflow. If we swapped spots with the other pointer, it means we're out of memory
+                finalRelation = pointer >= overflowCheck;
+                overflowFlag = initialRelation != finalRelation;
+            }
+
             return pointer;
         }
 
@@ -159,13 +179,13 @@ namespace CodeConnect.MemoryMappedQueue
         /// Stores current value of _writePointer in shared memory.
         /// Must be called from a synchronized context!
         /// </summary>
-        private void updateWritePointer()
+        private void storeWritePointer()
         {
             if (!_writer)
             {
                 throw new InvalidOperationException("This MemoryMappedQueue can only move the read pointer. Set writer=true in the constructor for enqueuing.");
             }
-            using (MemoryMappedViewAccessor pointerAccessor = _pointersFile.CreateViewAccessor(0, _pointerSize))
+            using (MemoryMappedViewAccessor pointerAccessor = _pointersFile.CreateViewAccessor(0, 2 * _pointerSize))
             {
                 pointerAccessor.Write(0, _writePointer);
             }
@@ -175,13 +195,13 @@ namespace CodeConnect.MemoryMappedQueue
         /// Stores current value of _readPointer in shared memory.
         /// Must be called from a synchronized context!
         /// </summary>
-        private void updateReadPointer()
+        private void storeReadPointer()
         {
             if (_writer)
             {
                 throw new InvalidOperationException("This MemoryMappedQueue can only move the write pointer. Set writer=false in the constructor for dequeuing.");
             }
-            using (MemoryMappedViewAccessor pointerAccessor = _pointersFile.CreateViewAccessor(0, _pointerSize))
+            using (MemoryMappedViewAccessor pointerAccessor = _pointersFile.CreateViewAccessor(0, 2 * _pointerSize))
             {
                 pointerAccessor.Write(_pointerSize, _readPointer);
             }
@@ -191,13 +211,13 @@ namespace CodeConnect.MemoryMappedQueue
         /// Gets current value of _writePointer from shared memory.
         /// Must be called from a synchronized context!
         /// </summary>
-        private void getWritePointer()
+        private void loadWritePointer()
         {
-            if (!_writer)
+            if (_writer)
             {
-                throw new InvalidOperationException("This MemoryMappedQueue can only update its read pointer. Set writer=true in the constructor for enqueuing.");
+                throw new InvalidOperationException("Writing MemoryMappedQueue must not read its property (write pointer) from the memory mapped file.");
             }
-            using (MemoryMappedViewAccessor pointerAccessor = _pointersFile.CreateViewAccessor(0, _pointerSize))
+            using (MemoryMappedViewAccessor pointerAccessor = _pointersFile.CreateViewAccessor(0, 2 * _pointerSize))
             {
                 long newWritePointer;
                 pointerAccessor.Read<long>(0, out newWritePointer);
@@ -209,16 +229,16 @@ namespace CodeConnect.MemoryMappedQueue
         /// Gets current value of _readPointer in shared memory.
         /// Must be called from a synchronized context!
         /// </summary>
-        private void getReadPointer()
+        private void loadReadPointer()
         {
-            if (_writer)
+            if (!_writer)
             {
-                throw new InvalidOperationException("This MemoryMappedQueue can only update its write pointer. Set writer=false in the constructor for dequeuing.");
+                throw new InvalidOperationException("Reading MemoryMappedQueue must not read its property (read pointer) from the memory mapped file.");
             }
-            using (MemoryMappedViewAccessor pointerAccessor = _pointersFile.CreateViewAccessor(0, _pointerSize))
+            using (MemoryMappedViewAccessor pointerAccessor = _pointersFile.CreateViewAccessor(0, 2 * _pointerSize))
             {
                 long newReadPointer;
-                pointerAccessor.Read<long>(0, out newReadPointer);
+                pointerAccessor.Read<long>(_pointerSize, out newReadPointer);
                 _readPointer = newReadPointer;
             }
         }

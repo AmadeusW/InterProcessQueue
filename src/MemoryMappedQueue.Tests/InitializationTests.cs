@@ -4,8 +4,8 @@ using CodeConnect.MemoryMappedQueue;
 
 namespace CodeConnect.MemoryMappedQueue.Tests
 {
-    [Collection("Data structure initialization")]
-    public class InitializationTests
+    [Collection("Initialization tests")]
+    public class InitializationTests : MemoryMappedQueueTests
     {
         [Theory]
         [InlineData(16)] // 16 B
@@ -14,9 +14,9 @@ namespace CodeConnect.MemoryMappedQueue.Tests
         [InlineData(5 * 1024 * 1024)] // 5 MB
         public void InitializeTest(int initialSize)
         {
-            using (var writeQueue = new MemoryMappedQueue(initialSize, true, "test"))
+            using (var writeQueue = new MemoryMappedQueue(initialSize, true, AccessName))
             {
-                using (var readQueue = new MemoryMappedQueue(initialSize, false, "test"))
+                using (var readQueue = new MemoryMappedQueue(initialSize, false, AccessName))
                 {
                     var test = readQueue.GetHashCode();
                 }
@@ -27,8 +27,8 @@ namespace CodeConnect.MemoryMappedQueue.Tests
         public void InitializeTooLargeTest()
         {
             var initialSize = int.MaxValue;
-            Assert.Throws(typeof(ArgumentException), () => new MemoryMappedQueue(initialSize, true, "test"));
-            Assert.Throws(typeof(ArgumentException), () => new MemoryMappedQueue(initialSize, false, "test"));
+            Assert.Throws(typeof(ArgumentException), () => new MemoryMappedQueue(initialSize, true, AccessName));
+            Assert.Throws(typeof(ArgumentException), () => new MemoryMappedQueue(initialSize, false, AccessName));
         }
 
         [Theory]
@@ -39,18 +39,18 @@ namespace CodeConnect.MemoryMappedQueue.Tests
         [InlineData(int.MinValue)]
         public void InitializeTooSmallTest(int initialSize)
         {
-            Assert.Throws(typeof(ArgumentException), () => new MemoryMappedQueue(initialSize, true, "test"));
-            Assert.Throws(typeof(ArgumentException), () => new MemoryMappedQueue(initialSize, false, "test"));
+            Assert.Throws(typeof(ArgumentException), () => new MemoryMappedQueue(initialSize, true, AccessName));
+            Assert.Throws(typeof(ArgumentException), () => new MemoryMappedQueue(initialSize, false, AccessName));
         }
 
         [Fact]
         public void OperationPermissionTest()
         {
             var initialSize = 50;
-            using (var writeQueue = new MemoryMappedQueue(initialSize, true, "test"))
+            using (var writeQueue = new MemoryMappedQueue(initialSize, true, AccessName))
             {
                 Assert.Throws(typeof(InvalidOperationException), () => writeQueue.Dequeue());
-                using (var readQueue = new MemoryMappedQueue(initialSize, false, "test"))
+                using (var readQueue = new MemoryMappedQueue(initialSize, false, AccessName))
                 {
                     Assert.Throws(typeof(InvalidOperationException), () => readQueue.Enqueue(null));
                 }
