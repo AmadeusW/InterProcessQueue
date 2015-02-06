@@ -1,0 +1,48 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<DirectedGraph GraphDirection="LeftToRight" xmlns="http://schemas.microsoft.com/vs/2009/dgml">
+  <Nodes>
+    <Node Id="MemoryMappedQueue" Category="Project" Bounds="0,279.8,143.913333333333,25.96" Label="MemoryMappedQueue" />
+    <Node Id="MemoryMappedQueue.Tests" Category="Project" Bounds="240.213333333333,0,173.33,25.96" Label="MemoryMappedQueue.Tests" />
+    <Node Id="xunit 2.0.0-rc1-build2826" Category="Package" Bounds="16.705,55.96,152.346666666667,25.96" Label="xunit 2.0.0-rc1-build2826" />
+    <Node Id="xunit.abstractions 2.0.0-rc1-build2826" Category="Package" Bounds="195.39,223.84,218.976666666667,25.96" Label="xunit.abstractions 2.0.0-rc1-build2826" />
+    <Node Id="xunit.assert 2.0.0-rc1-build2826" Category="Package" Bounds="0,111.92,185.756666666667,25.96" Label="xunit.assert 2.0.0-rc1-build2826" />
+    <Node Id="xunit.core 2.0.0-rc1-build2826" Category="Package" Bounds="215.893333333333,111.92,177.97,25.96" Label="xunit.core 2.0.0-rc1-build2826" />
+    <Node Id="xunit.extensibility.core 2.0.0-rc1-build2826" Category="Package" Bounds="183.311666666667,167.88,243.133333333333,25.96" Label="xunit.extensibility.core 2.0.0-rc1-build2826" />
+    <Node Id="xunit.runner.visualstudio 2.0.0-rc1-build1030" Category="Package" Bounds="199.356666666667,55.96,255.043333333333,25.96" Label="xunit.runner.visualstudio 2.0.0-rc1-build1030" />
+  </Nodes>
+  <Links>
+    <Link Source="MemoryMappedQueue.Tests" Target="xunit 2.0.0-rc1-build2826" Category="Installed Package" Bounds="155.908142089844,25.9599990844727,116.693572998047,27.9067192077637" />
+    <Link Source="MemoryMappedQueue.Tests" Target="xunit.runner.visualstudio 2.0.0-rc1-build1030" Category="Installed Package" Bounds="326.878326416016,25.9599990844727,0,21" />
+    <Link Source="xunit 2.0.0-rc1-build2826" Target="xunit.assert 2.0.0-rc1-build2826" Category="Package Dependency" Bounds="92.8783340454102,81.9199981689453,0,21" />
+    <Link Source="xunit 2.0.0-rc1-build2826" Target="xunit.core 2.0.0-rc1-build2826" Category="Package Dependency" Bounds="142.052032470703,81.9199981689453,104.950653076172,27.7030181884766" />
+    <Link Source="xunit.core 2.0.0-rc1-build2826" Target="xunit.extensibility.core 2.0.0-rc1-build2826" Category="Package Dependency" Bounds="304.878326416016,137.880004882813,0,21" />
+    <Link Source="xunit.extensibility.core 2.0.0-rc1-build2826" Target="xunit.abstractions 2.0.0-rc1-build2826" Category="Package Dependency" Bounds="304.878326416016,193.839996337891,0,21" />
+  </Links>
+  <Categories>
+    <Category Id="Installed Package" />
+    <Category Id="Package" />
+    <Category Id="Package Dependency" />
+    <Category Id="Project" />
+  </Categories>
+  <Properties>
+    <Property Id="Bounds" DataType="System.Windows.Rect" />
+    <Property Id="Expression" DataType="System.String" />
+    <Property Id="GraphDirection" DataType="Microsoft.VisualStudio.Diagrams.Layout.LayoutOrientation" />
+    <Property Id="GroupLabel" DataType="System.String" />
+    <Property Id="IsEnabled" DataType="System.Boolean" />
+    <Property Id="Label" Label="Label" Description="Displayable label of an Annotatable object" DataType="System.String" />
+    <Property Id="TargetType" DataType="System.Type" />
+    <Property Id="Value" DataType="System.String" />
+    <Property Id="ValueLabel" DataType="System.String" />
+  </Properties>
+  <Styles>
+    <Style TargetType="Node" GroupLabel="Project" ValueLabel="True">
+      <Condition Expression="HasCategory('Project')" />
+      <Setter Property="Background" Value="Blue" />
+    </Style>
+    <Style TargetType="Link" GroupLabel="Package Dependency" ValueLabel="True">
+      <Condition Expression="HasCategory('Package Dependency')" />
+      <Setter Property="Background" Value="Yellow" />
+    </Style>
+  </Styles>
+</DirectedGraph>
