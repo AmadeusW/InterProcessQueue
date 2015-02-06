@@ -144,7 +144,7 @@ namespace CodeConnect.MemoryMappedQueue
 
         private bool canUseSpace(long startPosition, long endPosition, int dataLength)
         {
-            return startPosition + dataLength < endPosition;
+            return startPosition + dataLength <= endPosition;
         }
 
         private long getReadLocation()
@@ -351,17 +351,17 @@ namespace CodeConnect.MemoryMappedQueue
         public string Diagnostics()
         {
             int diagnosticSize = 50;
-            int numberOfCharacters = 2;
+            int extraCharacterNumber = 3; // w,W and R
             char[] diagnostic = new char[diagnosticSize];
 
             double overflowData = 0;
             if (_usingOverflowWritePointer)
             {
-                overflowData = Math.Round(_overflowWritePointer / (double)_dataSize * (diagnosticSize - numberOfCharacters));
+                overflowData = Math.Round(_overflowWritePointer / (double)_dataSize * (diagnosticSize - extraCharacterNumber));
             }
-            var initialEmpty = Math.Round(_readPointer / (double)_dataSize * (diagnosticSize - numberOfCharacters));
-            var data = Math.Round((_writePointer - _readPointer) / (double)_dataSize * (diagnosticSize - numberOfCharacters));
-            var finalEmpty = Math.Round((_dataSize - _writePointer) / (double)_dataSize * (diagnosticSize - numberOfCharacters));
+            var initialEmpty = Math.Round((_readPointer - _overflowWritePointer) / (double)_dataSize * (diagnosticSize - extraCharacterNumber));
+            var data = Math.Round((_writePointer - _readPointer) / (double)_dataSize * (diagnosticSize - extraCharacterNumber));
+            var finalEmpty = Math.Round((_dataSize - _writePointer) / (double)_dataSize * (diagnosticSize - extraCharacterNumber));
 
             int charactersDrawn = 0;
 
@@ -384,7 +384,8 @@ namespace CodeConnect.MemoryMappedQueue
             {
                 diagnostic[i] = '-'; // Unused space
             }
-            return new string(diagnostic);
+            string details = String.Format(" {4}, size: {0}, R: {1}, W: {2}, w: {3}", _dataSize, _readPointer, _writePointer, _overflowWritePointer, _writer ? "Writer" : "Reader" );
+            return new string(diagnostic) + details;
         }
 
     }
