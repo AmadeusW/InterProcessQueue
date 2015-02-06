@@ -29,7 +29,7 @@ namespace CodeConnect.MemoryMappedQueue
         {
             _readPointer = 0;
             _writePointer = 0;
-            _overflowWritePointer = 0;
+            _overflowWritePointer = -1;
             _usingOverflowWritePointer = false;
             _writer = writer;
             _pointerSize = sizeof(long);
@@ -56,11 +56,13 @@ namespace CodeConnect.MemoryMappedQueue
             {
                 _dataFile = MemoryMappedFile.CreateNew(dataFileName, _dataSize, MemoryMappedFileAccess.ReadWrite);
                 _pointersFile = MemoryMappedFile.CreateNew(pointersFileName, 3 * _pointerSize, MemoryMappedFileAccess.ReadWrite);
+                storeWritePointer();
             }
             else
             {
                 _dataFile = MemoryMappedFile.OpenExisting(dataFileName, MemoryMappedFileRights.Read);
                 _pointersFile = MemoryMappedFile.OpenExisting(pointersFileName, MemoryMappedFileRights.ReadWrite);
+                storeReadPointer();
             }
         }
 
@@ -74,6 +76,10 @@ namespace CodeConnect.MemoryMappedQueue
             if (!_writer)
             {
                 throw new InvalidOperationException("This MemoryMappedQueue can only dequeue. Set writer=true in the constructor for enqueuing.");
+            }
+            if (serializedData == null || serializedData.Length == 0)
+            {
+                throw new ArgumentNullException("This MemoryMappedQueue cannot enqueue null values or zero-sized arrays.");
             }
             Int32 dataLength = serializedData.Length;
             Int32 grossDataLength = dataLength + sizeof(Int32);
@@ -277,7 +283,7 @@ namespace CodeConnect.MemoryMappedQueue
                 pointerAccessor.Read<long>(_pointerSize, out newWritePointer);
                 pointerAccessor.Read<long>(_pointerSize * 2, out newOverflowWritePointer);
                 _writePointer = newWritePointer;
-                _overflowWritePointer = newWritePointer;
+                _overflowWritePointer = newOverflowWritePointer;
                 _usingOverflowWritePointer = _overflowWritePointer > -1;
             }
         }
@@ -355,11 +361,13 @@ namespace CodeConnect.MemoryMappedQueue
             char[] diagnostic = new char[diagnosticSize];
 
             double overflowData = 0;
+            long actualOverflowWritePointer = 0; // So that we don't have -1 in the calculation.
             if (_usingOverflowWritePointer)
             {
-                overflowData = Math.Round(_overflowWritePointer / (double)_dataSize * (diagnosticSize - extraCharacterNumber));
+                actualOverflowWritePointer = _overflowWritePointer;
+                overflowData = Math.Round(actualOverflowWritePointer / (double)_dataSize * (diagnosticSize - extraCharacterNumber));
             }
-            var initialEmpty = Math.Round((_readPointer - _overflowWritePointer) / (double)_dataSize * (diagnosticSize - extraCharacterNumber));
+            var initialEmpty = Math.Round((_readPointer - actualOverflowWritePointer) / (double)_dataSize * (diagnosticSize - extraCharacterNumber));
             var data = Math.Round((_writePointer - _readPointer) / (double)_dataSize * (diagnosticSize - extraCharacterNumber));
             var finalEmpty = Math.Round((_dataSize - _writePointer) / (double)_dataSize * (diagnosticSize - extraCharacterNumber));
 
