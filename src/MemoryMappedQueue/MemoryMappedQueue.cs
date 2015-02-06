@@ -283,5 +283,33 @@ namespace CodeConnect.MemoryMappedQueue
             // GC.SuppressFinalize(this);
         }
 #endregion
+
+        internal string Diagnostics()
+        {
+            int diagnosticSize = 50;
+            int numberOfCharacters = 2;
+            char[] diagnostic = new char[diagnosticSize];
+            var initialEmpty = Math.Round(_readPointer / (double)_dataSize * (diagnosticSize - numberOfCharacters));
+            var data = Math.Round((_writePointer - _readPointer) / (double)_dataSize * (diagnosticSize - numberOfCharacters));
+            var finalEmpty = Math.Round((_dataSize - _writePointer) / (double)_dataSize * (diagnosticSize - numberOfCharacters));
+
+            int charactersDrawn = 0;
+            for (int i = 0; i < initialEmpty; i++, charactersDrawn++)
+            {
+                diagnostic[charactersDrawn] = '-'; // Unused space
+            }
+            diagnostic[charactersDrawn++] = 'R'; // Read pointer
+            for (int i = 0; i < data; i++, charactersDrawn++)
+            {
+                diagnostic[charactersDrawn] = '+'; // Data
+            }
+            diagnostic[charactersDrawn++] = 'W'; // Write pointer
+            for (int i = charactersDrawn; i < diagnosticSize; i++)
+            {
+                diagnostic[i] = '-'; // Unused space
+            }
+            return new string(diagnostic);
+        }
+
     }
 }

@@ -89,13 +89,23 @@ namespace CodeConnect.MemoryMappedQueue.Tests
                     Assert.Equal(testData, receivedData);
 
                     byte[] testData2 = { 9, 10, 11, 12, 13, 14, 15, 16 }; // 8 + 4
+                    var test = writeQueue.Diagnostics();
+                    var rtest = readQueue.Diagnostics();
                     writeQueue.Enqueue(testData2); // 24 B filled
+                    var test2 = writeQueue.Diagnostics();
+                    var rtest2 = readQueue.Diagnostics();
                     var receivedData2 = readQueue.Dequeue();
+                    var test3 = writeQueue.Diagnostics();
+                    var rtest3 = readQueue.Diagnostics();
                     Assert.Equal(testData2, receivedData2);
 
                     byte[] testData3 = { 17, 18, 19, 20 }; // 4 + 4
                     writeQueue.Enqueue(testData3); // 32 B filled
+                    var test4 = writeQueue.Diagnostics();
+                    var rtest4 = readQueue.Diagnostics();
                     var receivedData3 = readQueue.Dequeue();
+                    var test5 = writeQueue.Diagnostics();
+                    var rtest5 = readQueue.Diagnostics();
                     Assert.Equal(testData3, receivedData3);
 
                     byte[] testData4 = { 21, 22, 23, 24 }; // 4 + 4
