@@ -13,6 +13,7 @@ namespace CodeConnect.MemoryMappedQueue
         private BlockingCollection<Object> _sinkQueue;
         private Task _dataProcessor;
         private CancellationTokenSource _tokenSource;
+        private BinaryFormatter _bf;
         private bool _ignoreIncorrectItems;
         private int _maxDataSize;
 
@@ -21,6 +22,7 @@ namespace CodeConnect.MemoryMappedQueue
             _mmq = new MemoryMappedQueue(size, true, name);
             _sinkQueue = new BlockingCollection<object>(); // By default, it is a ConcurrentQueue
             _tokenSource = new CancellationTokenSource();
+            _bf = new BinaryFormatter();
             var taskCancellationToken = _tokenSource.Token;
             _maxDataSize = maxDataSize;
             _ignoreIncorrectItems = ignoreIncorrectItems;
@@ -38,10 +40,9 @@ namespace CodeConnect.MemoryMappedQueue
             // This is a blocking call:
             foreach (var item in _sinkQueue.GetConsumingEnumerable(token))
             {
-                BinaryFormatter bf = new BinaryFormatter();
                 using (MemoryStream ms = new MemoryStream())
                 {
-                    bf.Serialize(ms, item);
+                    _bf.Serialize(ms, item);
                     var serializedData = ms.ToArray();
                     if (serializedData.Length > _maxDataSize)
                     {
@@ -81,6 +82,7 @@ namespace CodeConnect.MemoryMappedQueue
 
                 // TODO: free unmanaged resources (unmanaged objects) and override a finalizer below.
                 // TODO: set large fields to null.
+                _bf = null;
 
                 disposedValue = true;
             }
